@@ -1,0 +1,539 @@
+<html>
+
+<head>
+  <style>
+
+    @font-face {
+      font-family: "GeoSans";
+      src: url("lib/GeosansLight.ttf");
+    }
+    html{ color:#fff; background:#000; font-family:"GeoSans" }
+
+    #container{
+      width      : 100%;
+      height     : 100%;
+      position   : absolute;
+      top        : 0px;
+      left       : 0px;
+      background : #000;
+    }
+
+    #stats{
+      position  : absolute;
+      bottom    : 0px;
+      right     : 0px;
+      z-index   : 999;
+    }
+
+    a{
+      color: #fff;
+      position: absolute;
+      z-index: 999;
+    }
+
+    #loading{
+
+      width:100%;
+      text-align:center;
+      padding-top:25%;
+      font-size:25px;
+
+    }
+
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h1>HETKONEN</h1>
+    <h2> Vladislav Delay </h2>
+    <p> Hand an Crown by @Teeps </p>
+    Loading models will take a while,<br/>
+    so come back when you hear music.
+  
+  </div>
+
+<script src = "lib/underscore.js"           ></script>
+<script src = "lib/three.js"                ></script>
+<script src = "lib/jquery.min.js"           ></script>
+<script src = "lib/stats.min.js"            ></script>
+<script src = "lib/TrackballControls.js"    ></script>
+<script src = "lib/ShaderLoader.js"         ></script>
+<script src = "lib/OBJLoader.js"            ></script>
+<script src = "lib/Stream.js"               ></script>
+<script src = "lib/AudioController.js"      ></script>
+<script src = "lib/AudioTexture.js"         ></script>
+
+<script>
+
+  console.log('Loading');
+
+  var container , camera, scene, renderer , stats;
+
+  var sceneSize = 5000;
+
+  var handGeo;
+  var skullGeo;
+  var tendrilGeo;
+  var logoGeo;
+
+  var loaded = 0;
+  var neededToLoad = 5;
+
+  var clock = new THREE.Clock();
+
+  var audioController = new AudioController();
+
+  var stream = new Stream(  'audio/hetkonen.mp3',audioController  );
+
+  var loader  = new THREE.OBJLoader();
+  loader.load( 'models/Cab_Hand_TRIS.OBJ' , function( obj ){
+
+    handGeo = obj.children[0].geometry;
+    handGeo.computeFaceNormals();
+    handGeo.computeVertexNormals();
+    onLoad();
+
+  });
+
+  loader.load( 'models/skull1.obj' , function( obj ){
+
+    skullGeo = obj.children[0].geometry;
+    skullGeo.computeFaceNormals();
+    skullGeo.computeVertexNormals();
+
+    onLoad();
+
+  });
+
+  loader.load( 'models/Orb_seed_tris.OBJ' , function( obj ){
+
+    tendrilGeo = obj.children[0].geometry;
+    tendrilGeo.computeFaceNormals();
+    tendrilGeo.computeVertexNormals();
+
+    onLoad();
+
+  });
+
+
+  loader.load( 'models/logo.obj' , function( obj ){
+
+    logoGeo = obj.children[0].geometry;
+    logoGeo.computeFaceNormals();
+    logoGeo.computeVertexNormals();
+
+    onLoad();
+
+  });
+
+
+  var mossNormal = THREE.ImageUtils.loadTexture( 'img/normals/moss_normal_map.jpg' )  
+  mossNormal.wrapS = THREE.RepeatWrapping; 
+  mossNormal.wrapT = THREE.RepeatWrapping; 
+
+  var cragNormal = THREE.ImageUtils.loadTexture( 'img/normals/7723-normal.jpg' );
+  cragNormal.wrapS = THREE.RepeatWrapping; 
+  cragNormal.wrapT = THREE.RepeatWrapping; 
+
+
+  var snowNormal = THREE.ImageUtils.loadTexture( 'img/normals/ice-snow.jpg' );
+  snowNormal.wrapS = THREE.RepeatWrapping; 
+  snowNormal.wrapT = THREE.RepeatWrapping;
+
+  var timer = { type:"f" , value:0 }
+  var dT = { type:"f" , value:0 }
+
+
+  var shaders = new ShaderLoader('shaders');
+
+  shaders.load( 'fs-fire' , 'fire' , 'fragment' );
+  shaders.load( 'vs-fire' , 'fire' , 'vertex' );
+
+  shaders.shaderSetLoaded = function(){
+   onLoad();
+  }
+
+
+  function init(){
+
+
+    scene = new THREE.Scene();
+    
+    camera = new THREE.PerspectiveCamera( 
+      50 ,
+      window.innerWidth / window.innerHeight,
+      sceneSize / 100 ,
+      sceneSize * 4000
+    );
+
+    // placing our camera position so it can see everything
+    camera.position.z = 2000 ;
+
+    camera.velocity = new THREE.Vector3();
+
+    controls = new THREE.TrackballControls( camera );
+
+    // Getting the container in the right location
+    container     = document.createElement( 'div' );
+    container.id  = 'container';
+    
+    document.body.appendChild( container );
+
+    // Getting the stats in the right position
+    stats = new Stats();
+    stats.domElement.id = 'stats';
+    document.body.appendChild( stats.domElement );
+
+
+    // Setting up our Renderer
+    renderer = new THREE.WebGLRenderer();
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+    container.appendChild( renderer.domElement );
+
+
+    // Making sure our renderer is always the right size
+    window.addEventListener( 'resize', onWindowResize , false );
+
+
+
+    /*
+
+      HAND
+
+    */
+
+
+  
+    var tNormal = mossNormal;
+    
+
+    var color1 = new THREE.Vector3( 1. , 1. , .3 );
+    var color2 = new THREE.Vector3( 5. , 2. , 0 );
+    var color3 = new THREE.Vector3( 1. , .4 , 0. );
+    var color4 = new THREE.Vector3( 1.8 , .4 , .0 );
+    
+    var uniforms = {
+
+      lightPos: { type:"v3" , value: new THREE.Vector3(100,0,0)},
+      tNormal:{type:"t",value:tNormal},
+      time:timer,
+      t_audio:{ type:"t" , value: audioController.texture },
+      color1:{ type:"v3" , value: color1 },
+      color2:{ type:"v3" , value: color2 },
+      color3:{ type:"v3" , value: color3 },
+      color4:{ type:"v3" , value: color4 },
+      texScale:{type:"f" , value:1.1},
+      normalScale:{type:"f" , value:.4},
+      timeMatMultiplier:{type:"f" , value:.1 }
+
+
+    }
+
+    vertexShader   = shaders.vertexShaders.fire;
+    fragmentShader = shaders.fragmentShaders.fire;
+
+    material = new THREE.ShaderMaterial({
+
+      uniforms: uniforms,
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader
+
+    });
+
+
+    mesh = new THREE.Mesh( handGeo , material );
+    scene.add( mesh );
+
+    mesh.scale.multiplyScalar( 4000.2 );
+
+    mesh.rotation.x =  8.168140899333462;
+    mesh.rotation.y = -5.654866776461628;
+    mesh.rotation.z = 1.8849555921538759;
+
+    mesh.position.x = -1000;
+    mesh.position.y = -3000;
+
+    handMesh = mesh;
+
+
+
+    /*
+
+      CROWN
+
+    */
+
+
+    var uniforms = {
+
+      lightPos: { type:"v3" , value: new THREE.Vector3(100,0,0)},
+      tNormal:{type:"t",value:tNormal},
+      time:timer,
+      t_audio:{ type:"t" , value: audioController.texture },
+      color1:{ type:"v3" , value: color1 },
+      color2:{ type:"v3" , value: color2 },
+      color3:{ type:"v3" , value: color3 },
+      color4:{ type:"v3" , value: color4 },
+      texScale:{type:"f" , value:.1},
+      normalScale:{type:"f" , value:5.1},
+      timeMatMultiplier:{type:"f" , value:.1 }
+
+
+    }
+
+    vertexShader   = shaders.vertexShaders.fire;
+    fragmentShader = shaders.fragmentShaders.fire;
+
+    material = new THREE.ShaderMaterial({
+
+      uniforms: uniforms,
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader
+
+    });
+
+    crownMat = material;
+    
+    var obj = new THREE.Object3D();
+
+    for( var i =0 ; i < 8; i++ ){
+      
+      mesh = new THREE.Mesh( tendrilGeo , material );
+
+      mesh.scale.multiplyScalar( 1000.5 );
+
+      var theta = ( i/8 ) * 2 * Math.PI;
+      mesh.position.x = 5000 * Math.cos( theta ); 
+      mesh.position.z = 5000 * Math.sin( theta ); 
+      mesh.rotation.z = -Math.PI/2;//2 * Math.PI * (i/8);
+      mesh.rotation.y = -theta - Math.PI/2;
+      
+      obj.add( mesh );
+
+    } 
+
+    obj.position.y = 5000;
+    obj.rotation.x = -Math.PI / 20;
+
+    scene.add( obj );
+
+
+
+
+
+
+    /*
+
+      SAPHIRE
+
+    */
+
+
+    var tNormal = cragNormal;    
+
+    var color1 = new THREE.Vector3( .1 , .4 , 2.3 );
+    var color2 = new THREE.Vector3( .2 , 2. , 4. );
+    var color3 = new THREE.Vector3( .1 , .4 , 2. );
+    var color4 = new THREE.Vector3( .8 , .4 , 5. );
+    
+    var uniforms = {
+
+      lightPos: { type:"v3" , value: new THREE.Vector3(100,0,0)},
+      tNormal:{type:"t",value:tNormal},
+      time:timer,
+      t_audio:{ type:"t" , value: audioController.texture },
+      color1:{ type:"v3" , value: color1 },
+      color2:{ type:"v3" , value: color2 },
+      color3:{ type:"v3" , value: color3 },
+      color4:{ type:"v3" , value: color4 },
+      texScale:{type:"f" , value:.001},
+      normalScale:{type:"f" , value:5.1},
+      timeMatMultiplier:{type:"f" , value:0 }
+
+    }
+
+
+    vertexShader   = shaders.vertexShaders.fire;
+    fragmentShader = shaders.fragmentShaders.fire;
+
+    material = new THREE.ShaderMaterial({
+
+      uniforms: uniforms,
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader
+
+    });
+    var geo = new THREE.CylinderGeometry( 600 , 400 , 200 , 6 , 20 );
+
+    var saphire = new THREE.Mesh( geo , material );
+
+    //saphire.scale.multiplyScalar( 10 );
+    saphire.rotation.x = -Math.PI/2;
+
+    saphire.position.z = 5000;
+    saphire.position.x = -1500;
+    scene.add( saphire );
+
+
+
+
+
+
+
+    /*
+
+      LOGO
+
+    */
+
+      var tNormal = mossNormal
+
+    var color1 = new THREE.Vector3( 1 , 0 , 0);
+    var color2 = new THREE.Vector3( 0 , 0 , 0 );
+    var color3 = new THREE.Vector3( 0 , 0 , 0);
+    var color4 = new THREE.Vector3( 0, 0, 0);
+
+    var uniforms = {
+
+      lightPos: { type:"v3" , value: new THREE.Vector3(100,0,0)},
+      tNormal:{type:"t",value:tNormal},
+      time:timer,
+      t_audio:{ type:"t" , value: audioController.texture },
+      color1:{ type:"v3" , value: color1 },
+      color2:{ type:"v3" , value: color2 },
+      color3:{ type:"v3" , value: color3 },
+      color4:{ type:"v3" , value: color4 },
+      texScale:{type:"f" , value:.2},
+      normalScale:{type:"f" , value:.4},
+      timeMatMultiplier:{type:"f" , value:.1 }
+
+    }
+
+
+    vertexShader   = shaders.vertexShaders.fire;
+    fragmentShader = shaders.fragmentShaders.fire;
+
+    material = new THREE.ShaderMaterial({
+
+      uniforms: uniforms,
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader
+
+    });
+
+    var logo = new THREE.Mesh( logoGeo , material );
+
+    logo.scale.multiplyScalar(60 );
+    scene.add( logo );
+
+
+
+
+
+    /*
+
+      SKULL
+
+    */
+
+    var color4 = new THREE.Vector3( 1. , .1 , .3 );
+    var color3 = new THREE.Vector3( 2. , .6 , .1 );
+    var color2 = new THREE.Vector3( 1. , .1 , 0. );
+    var color1 = new THREE.Vector3( 4. , 0. , .5 );
+
+
+    var tNormal = snowNormal; 
+    var uniforms = {
+
+      lightPos: { type:"v3" , value: new THREE.Vector3(100,0,0)},
+      tNormal:{type:"t",value:tNormal},
+      time:timer,
+      t_audio:{ type:"t" , value: audioController.texture },
+      color1:{ type:"v3" , value: color1 },
+      color2:{ type:"v3" , value: color2 },
+      color3:{ type:"v3" , value: color3 },
+      color4:{ type:"v3" , value: color4 },
+      texScale:{type:"f" , value:.01},
+      normalScale:{type:"f" , value:1.5},
+      timeMatMultiplier:{type:"f" , value:.1 }
+
+    }
+
+
+    vertexShader   = shaders.vertexShaders.fire;
+    fragmentShader = shaders.fragmentShaders.fire;
+
+    material = new THREE.ShaderMaterial({
+
+      uniforms: uniforms,
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader,
+      side:THREE.DoubleSide
+
+    });
+
+    mesh = new THREE.Mesh( skullGeo , material );// material );
+
+    mesh.scale.multiplyScalar( 20.5 );
+
+    mesh.position.x = -500;
+    mesh.position.y = -5000;
+    scene.add( mesh );
+
+  }
+
+
+  function animate(){
+
+    audioController.update();
+
+    dT.value = clock.getDelta();
+    timer.value += dT.value;
+
+    var norm = camera.position.clone().normalize();
+    norm.multiplyScalar( Math.PI * 2 );
+   
+    crownMat.uniforms.texScale.value = .1 * Math.sin( norm.x ) * Math.cos( norm.y );
+    crownMat.uniforms.normalScale.value = 1. + Math.sin( norm.z )
+
+    stats.update();
+
+    controls.update();
+    renderer.render( scene , camera );
+
+    requestAnimationFrame( animate );
+
+  }
+
+  // Resets the renderer to be the proper size
+  function onWindowResize(){
+
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+
+  }
+
+
+  function onLoad(){
+
+
+    loaded ++;
+
+    if( loaded === neededToLoad ){
+
+      init();
+      animate();
+      stream.play();
+
+    }
+
+  }
+</script>
+
+
+</body>
+</html>
