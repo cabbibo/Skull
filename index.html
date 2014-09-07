@@ -57,16 +57,18 @@
   
   </div>
 
-<script src = "lib/underscore.js"           ></script>
-<script src = "lib/three.js"                ></script>
-<script src = "lib/jquery.min.js"           ></script>
-<script src = "lib/stats.min.js"            ></script>
-<script src = "lib/TrackballControls.js"    ></script>
-<script src = "lib/ShaderLoader.js"         ></script>
-<script src = "lib/OBJLoader.js"            ></script>
-<script src = "lib/Stream.js"               ></script>
-<script src = "lib/AudioController.js"      ></script>
-<script src = "lib/AudioTexture.js"         ></script>
+<script src = "lib/underscore.js"             ></script>
+<script src = "lib/three.js"                  ></script>
+<script src = "lib/jquery.min.js"             ></script>
+<script src = "lib/stats.min.js"              ></script>
+<script src = "lib/TrackballControls.js"      ></script>
+<script src = "lib/ShaderLoader.js"           ></script>
+<script src = "lib/OBJLoader.js"              ></script>
+<script src = "lib/Stream.js"                 ></script>
+<script src = "lib/AudioController.js"        ></script>
+<script src = "lib/AudioTexture.js"           ></script>
+<script src = "lib/leap.min.js"               ></script>
+<script src = "lib/LeapTrackballControls.js"  ></script>
 
 <script>
 
@@ -87,6 +89,10 @@
   var clock = new THREE.Clock();
 
   var audioController = new AudioController();
+
+  var controller = new Leap.Controller();
+  controller.connect();
+
 
   var stream = new Stream(  'audio/hetkonen.mp3',audioController  );
 
@@ -176,7 +182,17 @@
 
     camera.velocity = new THREE.Vector3();
 
-    controls = new THREE.TrackballControls( camera );
+    fallback = new THREE.TrackballControls( camera );
+    
+    controls = new THREE.LeapTrackballControls( camera , controller , fallback );
+
+    controls.zoom = 1000;
+    controls.maxZoom = 50000;
+    controls.minZoom = 500;
+    controls.zoomDampening = .95;
+    controls.zoomMultiplier = 10;
+    controls.rotationSpeed = 3;
+    controls.rotationDampening = .95;
 
     // Getting the container in the right location
     container     = document.createElement( 'div' );
@@ -499,8 +515,8 @@
     var norm = camera.position.clone().normalize();
     norm.multiplyScalar( Math.PI * 2 );
    
-    crownMat.uniforms.texScale.value = .1 * Math.sin( norm.x ) * Math.cos( norm.y );
-    crownMat.uniforms.normalScale.value = 1. + Math.sin( norm.z )
+   // crownMat.uniforms.texScale.value = .1 * Math.sin( norm.x ) * Math.cos( norm.y );
+   // crownMat.uniforms.normalScale.value = 1. + Math.sin( norm.z )
 
     stats.update();
 
